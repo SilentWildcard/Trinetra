@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Trinetra Simulator Browser Test</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="./styles/main.css">
+</head>
+<body class="bg-black text-white p-4 font-mono text-xs">
+  <div id="demo-bar-container"></div>
+  <div id="phone-container">
+    <main id="app-screen"></main>
+    <footer id="bottom-nav-container"></footer>
+  </div>
+
+  <div id="test-output" class="mt-4 p-4 border border-purple-500 rounded bg-slate-900">
+    Running browser test suite...
+  </div>
+
+  <script type="module">
+    import { TrinetraApp } from './src/app.js';
+
+    const logs = [];
+    function assert(condition, message) {
+      if (!condition) {
+        logs.push(`❌ FAIL: ${message}`);
+        throw new Error(message);
+      } else {
+        logs.push(`✅ PASS: ${message}`);
+      }
+    }
+
+    async function runTests() {
+      try {
+        const app = new TrinetraApp();
+        window.trinetraApp = app;
+        app.render();
+
+        assert(app.state.activeScreen === 'welcome', 'Initial screen is welcome');
+        
+        // 1. Navigate to Home
+        app.navigateTo('home');
+        assert(app.state.activeScreen === 'home', 'Navigated to home');
+        assert(app.signalFusion.state.level === 'NORMAL', 'Initial risk is NORMAL');
+
+        // 2. Click "Sim Fall" simulator button
+        const simFallBtn = document.getElementById('bar-sim-fall');
+        assert(Boolean(simFallBtn), 'bar-sim-fall button exists in DOM');
+        simFallBtn.click();
+
+        // 3. Verify Fall Anomaly Injection into Signal Fusion
+        assert(app.signalFusion.latestMotion.anomaly === 'FALL', 'Signal Fusion registered motion anomaly FALL');
+        assert(app.signalFusion.state.score >= 70, `Risk score spiked (score: ${app.signalFusion.state.score})`);
+        assert(app.signalFusion.state.level === 'HIGH' || app.signalFusion.state.level === 'CRITICAL', `Risk level escalated to ${app.signalFusion.state.level}`);
+        
+        // 4. Verify Immediate Transition to Threat Detection
+        assert(app.state.activeScreen === 'threatDetection', `Autonomous transition to threatDetection (active: ${app.state.activeScreen})`);
+        
+        // 5. Verify Demo Bar Step 4 is highlighted
+        const threatStepBtn = document.querySelector('[data-flow-step="threat"]');
+        assert(threatStepBtn && threatStepBtn.className.includes('bg-amber-500'), 'Demo bar Threat step is active and highlighted');
+
+        // 6. Wait for Autonomous Transition to "ARE YOU SAFE?" (2.6s)
+        logs.push('⏳ Waiting for autonomous transition to safetyConfirm (2.6s)...');
+        await new Promise(res => setTimeout(res, 2700));
+
+        // 7. Verify Transition to Safety Confirmation Screen
+        assert(app.state.activeScreen === 'safetyConfirm', `Autonomous transition to safetyConfirm (active: ${app.state.activeScreen})`);
+        const confirmStepBtn = document.querySelector('[data-flow-step="safetyConfirm"]');
+        assert(confirmStepBtn && confirmStepBtn.className.includes('bg-rose-600'), 'Demo bar "Are You Safe?" step is active and highlighted');
+
+        // 8. Test Reset Functionality
+        const resetBtn = document.getElementById('bar-reset');
+        assert(Boolean(resetBtn), 'bar-reset button exists in DOM');
+        resetBtn.click();
+
+        assert(app.state.activeScreen === 'home', `Reset returned to home screen (active: ${app.state.activeScreen})`);
+        assert(app.signalFusion.state.level === 'NORMAL', `Risk reset to NORMAL (score: ${app.signalFusion.state.score})`);
+        assert(app.signalFusion.latestMotion.anomaly === null, 'Motion anomaly cleared to null');
+
+        // 9. Re-test Sim Fall to confirm it works repeatedly
+        logs.push('🔄 Testing Sim Fall a second time after reset...');
+        simFallBtn.click();
+        assert(app.signalFusion.latestMotion.anomaly === 'FALL', 'Second Sim Fall registered successfully');
+        assert(app.state.activeScreen === 'threatDetection', 'Second Sim Fall transitioned to threatDetection');
+
+        logs.push('🎉 ALL TESTS PASSED! Simulator controls and autonomous state machine fully verified.');
+      } catch (err) {
+        logs.push(`💥 EXCEPTION: ${err.message}`);
+      }
+
+      const out = document.getElementById('test-output');
+      if (out) {
+        out.innerHTML = `<pre>${logs.join('\n')}</pre>`;
+      }
+      window.TEST_COMPLETED = true;
+    }
+
+    window.addEventListener('DOMContentLoaded', runTests);
+  </script>
+</body>
+</html>
